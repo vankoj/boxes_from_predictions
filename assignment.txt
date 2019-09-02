@@ -1,0 +1,8 @@
+Create an UI which draws the boxes from predictions like widgets.
+- To be able to draw boxes
+- To be able to move and resize boxes
+- To have the ability to delete boxes with 'x' icon
+- To be able to change the class
+- To be able Load model and Predict Images
+- To be able to show all predictions in table like list. With column for  
+class and column for confidence
