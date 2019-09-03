@@ -13,9 +13,11 @@ CUR_DIR_PATH = os.path.dirname(os.path.realpath(__file__))
 SCREEN_WIDTH = GetSystemMetrics(0)
 SCREEN_HEIGHT = GetSystemMetrics(1)
 
-
+bounding_boxes_coords_list = []
+visual_bounding_boxes_list = []
 mouse_btn1_down = False
 drawing_box_x1, drawing_box_y1, drawing_box_x2, drawing_box_y2 = None, None, None, None
+drawing_box_tmp = []
 
 
 class MyFirstGUI:
@@ -23,13 +25,15 @@ class MyFirstGUI:
         self.master = master
         master.title('Testing the UI')
     
+        # SIDE PANEL
+        # Action buttons
         scrollbar = Scrollbar(master)
 
 
         open_file_btn = Button(master, text="Open image", command=self.open_image)
         open_file_btn.grid(row=0, column=0, rowspan=10, columnspan=10, sticky=N)
-        #
         
+        # Bounding boxes scroll list
         scrollbar = Scrollbar(master)
 
 
@@ -68,33 +72,10 @@ class MyFirstGUI:
         self.im2=ImageTk.PhotoImage(self.im)
         self.imgtag=self.image_canvas.create_image(0,0,anchor="nw",image=self.im2)
         #
-        
-        
-        #self.image_canvas.create_rectangle(0, 0, 100, 100, fill='red')
-        
-        #-----------------------        
-        #load = Image.open(os.path.join(CUR_DIR_PATH, 'UI_look.png'))
-        #render = ImageTk.PhotoImage(load)
-
-        #img = Label(master, image=render)
-        #img.image = render
-        ##img.place(x=0, y=0)
-        #img.pack()
-        
-        #----------------
-        
-        self.label = Label(master, text="This is our first GUI!")
-        # self.label.pack()
-
-        self.greet_button = Button(master, text="Greet", command=self.greet)
-        # self.greet_button.pack()
-
-        self.close_button = Button(master, text="Close", command=master.quit)
-        # self.close_button.pack()
-        
-        #self.label.pack(side=BOTTOM)
-        #self.greet_button.pack()
-        #self.close_button.pack()
+        self.image_canvas.bind('<Motion>', self.mouse_motion)  # Setting the callback for mouse movement
+        self.image_canvas.bind('<Button-1>', self.click_mouse_btn1)
+        self.image_canvas.bind('<Button-3>', self.click_mouse_btn3)
+        self.image_canvas.bind('<ButtonRelease-1>', self.release_mouse_btn1)
 
 
     def greet(self):
@@ -105,6 +86,7 @@ class MyFirstGUI:
     
     
     def open_image(self):
+        global visual_bounding_boxes_list
         file_path = filedialog.askopenfilename()
         print('file_path: ', file_path) # todo - remove
         
@@ -114,53 +96,76 @@ class MyFirstGUI:
         self.im2=ImageTk.PhotoImage(self.im)
         self.image_canvas.delete(self.imgtag)
         self.imgtag=self.image_canvas.create_image(0,0,anchor="nw",image=self.im2)
+        # Remove the previous drawn boxes
+        for visual_bounding_box in visual_bounding_boxes_list:
+            print('item: ')
+            for item in visual_bounding_box:
+                self.image_canvas.delete(item)
+        visual_bounding_boxes_list = []
+
+    def mouse_motion(self, event):
+        global drawing_box_x2, drawing_box_y2
+        drawing_box_x2, drawing_box_y2 = event.x, event.y
+        print('x:{}, y:{}'.format(drawing_box_x2, drawing_box_y2))
+        
+        global mouse_btn1_down
+        if mouse_btn1_down:
+            print('x1: {}, y1: {}, x2: {}, y2: {}'.format(drawing_box_x1, drawing_box_y1, drawing_box_x2, drawing_box_y2))
+            global drawing_box_tmp
+            try:
+              drawing_box_tmp
+            except NameError:
+                pass
+            else:
+                if len(drawing_box_tmp) > 0:
+                    for item in drawing_box_tmp[:-1]:
+                        self.image_canvas.delete(item)
+                    del drawing_box_tmp[-1]
+            drawing_box_tmp = create_rectangle(drawing_box_x1, drawing_box_y1, drawing_box_x2, drawing_box_y2, fill='red', alpha=.8)
 
 
-def mouse_motion(event):
-    x_mouse_on_screen, y_mouse_on_screen = event.x_root, event.y_root
-    x_window_location, y_window_location = root.winfo_x(), root.winfo_y()
-    global drawing_box_x2, drawing_box_y2
-    drawing_box_x2, drawing_box_y2 = (x_mouse_on_screen - x_window_location - 9), (y_mouse_on_screen - y_window_location - 31)
-    print('x:{}, y:{}'.format(drawing_box_x2, drawing_box_y2))
-    mouse.pack_forget()
-    #mouse.place(x=x, y=y)
-    global mouse_btn1_down
-    if mouse_btn1_down:
-        print('x1: {}, y1: {}, x2: {}, y2: {}'.format(drawing_box_x1, drawing_box_y1, drawing_box_x2, drawing_box_y2))
-        global drawing_box_tmp
-        try:
-          drawing_box_tmp
-        except NameError:
-            pass
-        else:
-            my_gui.image_canvas.delete(drawing_box_tmp)
-        drawing_box_tmp = my_gui.image_canvas.create_rectangle(drawing_box_x1, drawing_box_y1, drawing_box_x2, drawing_box_y2, fill='red')
+    def click_mouse_btn1(self, event):
+        global drawing_box_x1, drawing_box_y1, mouse_btn1_down
+        mouse_btn1_down = True
+        
+        drawing_box_x1, drawing_box_y1 = event.x, event.y
+        print('x:{}, y:{}'.format(drawing_box_x1, drawing_box_y1))
 
 
-def click_mouse_btn1(event):
-    global mouse_btn1_down
-    mouse_btn1_down = True
-    
-    x_mouse_on_screen, y_mouse_on_screen = event.x_root, event.y_root
-    x_window_location, y_window_location = root.winfo_x(), root.winfo_y()
-    global drawing_box_x1, drawing_box_y1
-    drawing_box_x1, drawing_box_y1 = (x_mouse_on_screen - x_window_location - 9), (y_mouse_on_screen - y_window_location - 31)
-    print('x:{}, y:{}'.format(drawing_box_x1, drawing_box_y1))
-    click.pack_forget()
-    #click.place(x=x, y=y)
+    def click_mouse_btn3(self, event):
+        global visual_bounding_boxes_list
+        if len(visual_bounding_boxes_list) > 0:
+            for item in visual_bounding_boxes_list[0]:
+                self.image_canvas.delete(item)
+            del visual_bounding_boxes_list[0]
+        print('right')
 
 
-def release_mouse_btn1(event):
-    global mouse_btn1_down
-    mouse_btn1_down = False
+    def release_mouse_btn1(self, event):
+        global mouse_btn1_down, bounding_boxes_coords_list, visual_bounding_boxes_list, drawing_box_tmp
+        mouse_btn1_down = False
+        bounding_boxes_coords_list.append([drawing_box_x1, drawing_box_y1, drawing_box_x2, drawing_box_y2])
+        visual_bounding_boxes_list.append(drawing_box_tmp)
+        drawing_box_tmp = []
+
+
+def create_rectangle(x1, y1, x2, y2, **kwargs):
+    global alpha, fill, image, img, my_gui
+    return_list = []
+    if 'alpha' in kwargs:
+        alpha = int(kwargs.pop('alpha') * 255)
+        fill = kwargs.pop('fill')
+        fill = root.winfo_rgb(fill) + (alpha,)
+        image = Image.new('RGBA', (abs(x2 - x1), abs(y2 - y1)), fill)
+        img = ImageTk.PhotoImage(image)
+        #my_gui.image_canvas.create_image(min(x1, x2), min(y1, y2), image=img)
+        return_list.append(my_gui.image_canvas.create_image(min(x1, x2), min(y1, y2), anchor='nw', image=img))
+    return_list.append(my_gui.image_canvas.create_rectangle(x1, y1, x2, y2, **kwargs))
+    return_list.append(img)
+    return return_list
 
 
 root = Tk()
-root.bind('<Motion>', mouse_motion)  # Setting the callback for mouse movement
-root.bind('<Button-1>', click_mouse_btn1)
-root.bind('<ButtonRelease-1>', release_mouse_btn1)
 my_gui = MyFirstGUI(root)
 
-mouse = Label(root, text='a')
-click = Label(root, text='AAA')
 root.mainloop()
