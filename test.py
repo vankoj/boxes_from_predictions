@@ -1,15 +1,16 @@
 
 import os
+import itertools
 import tkinter as tk
 
 from PIL import Image, ImageTk
 from tkinter import filedialog
 from tkinter import font
 from win32api import GetSystemMetrics
+from threading import Thread
 
-# My scripts:
+# Custom scripts:
 from get_bounding_boxes_from_prediction import get_predictions_from_image
-
 from ToolTip import ToolTip, CreateToolTip
 
 
@@ -20,6 +21,8 @@ SCREEN_HEIGHT = GetSystemMetrics(1)
 
 bounding_boxes_coords_list = []
 visual_bounding_boxes_list = []
+all_labels_list = []
+predictions_dict = {}
 mouse_btn1_down = False
 drawing_box_x1, drawing_box_y1, drawing_box_x2, drawing_box_y2 = (None, None,
                                                                   None, None)
@@ -36,6 +39,8 @@ class MyFirstGUI:
         self.image_canvas_focused = False
         self.image_path, self.inference_graph_path, self.label_map_path = '', \
             '', ''
+        self.image, self.img_width, self.img_height = None, None, None
+        self.img_tag = None
 
         master.title('Testing the UI')
 
@@ -78,8 +83,8 @@ class MyFirstGUI:
                                     sticky=tk.N + tk.S)
         self.listbox_scrollbar.config(command=self.listbox.yview)
 
-        #
-        #
+        # WORKSPACE
+        # Canvas for the opened image
         img_canvas_width, img_canvas_height = (
             self.width - self.listbox.winfo_width() -
             self.listbox_scrollbar.winfo_width() - 17,
@@ -88,46 +93,46 @@ class MyFirstGUI:
                                       width=img_canvas_width,
                                       height=img_canvas_height,
                                       bg='white')
-        print(self.image_canvas.bbox('all'))
-        # self.image_canvas.config(scrollregion=(0, 0, 1000, 1000))
-        # self.image_canvas.configure(scrollregion=self.image_canvas.bbox('all'))
         self.image_canvas.config(highlightthickness=0)  # Canvas margin
 
-        sbarV = tk.Scrollbar(master, orient=tk.VERTICAL)
-        sbarH = tk.Scrollbar(master, orient=tk.HORIZONTAL)
+        vertical_scroll_bar = tk.Scrollbar(master, orient=tk.VERTICAL)
+        horizontal_scroll_bar = tk.Scrollbar(master, orient=tk.HORIZONTAL)
 
-        sbarV.config(command=self.image_canvas.yview)
-        sbarH.config(command=self.image_canvas.xview)
+        vertical_scroll_bar.config(command=self.image_canvas.yview)
+        horizontal_scroll_bar.config(command=self.image_canvas.xview)
 
-        self.image_canvas.config(yscrollcommand=sbarV.set)
-        self.image_canvas.config(xscrollcommand=sbarH.set)
+        self.image_canvas.config(yscrollcommand=vertical_scroll_bar.set)
+        self.image_canvas.config(xscrollcommand=horizontal_scroll_bar.set)
 
-        sbarV.grid(row=0, column=13, rowspan=100, sticky=tk.N + tk.S)
-        sbarH.grid(row=100, column=12, sticky=tk.W + tk.E)
+        vertical_scroll_bar.grid(row=0, column=13,
+                                 rowspan=100, sticky=tk.N + tk.S)
+        horizontal_scroll_bar.grid(row=100, column=12,
+                                   sticky=tk.W + tk.E)
 
         self.image_canvas.grid(row=0, column=12, rowspan=100)
 
-        self.im = Image.open(os.path.join(CUR_DIR_PATH, 'asd.png'))
-        width, height = self.im.size
-        self.image_canvas.config(scrollregion=(0, 0, width, height))
-        self.im2 = ImageTk.PhotoImage(self.im)
-        self.imgtag = self.image_canvas.create_image(
-            0, 0, anchor="nw", image=self.im2)
-        #
+        # todo - pick up initial image
+        self.open_image(os.path.join(CUR_DIR_PATH, 'asd.png'))
 
-        # Setting the callback for mouse movement
+        # Setting move/resize event callback
         self.master.bind("<Configure>", self.on_resize_window)
+        # Setting keyboard keys event callbacks
         self.master.bind('<KeyPress>', self.key_down)
         self.master.bind("<KeyRelease>", self.key_up)
-
+        # Setting enter and leave callbacks for the canvas
         self.image_canvas.bind('<Enter>', self.image_canvas_entered)
         self.image_canvas.bind('<Leave>', self.image_canvas_left)
+        # Setting mouse event callbacks
         self.image_canvas.bind('<Motion>', self.mouse_motion)
         self.image_canvas.bind('<Button-1>', self.click_mouse_btn1)
         self.image_canvas.bind('<Button-3>', self.click_mouse_btn3)
         self.image_canvas.bind('<ButtonRelease-1>', self.release_mouse_btn1)
         self.image_canvas.bind_all('<MouseWheel>', self.mouse_wheel)
-        # self.image_canvas.bind_all('<Key>', self.key_event)
+
+    def click(self, evt):
+        x, y = self.image_canvas.canvasx(
+            evt.x), self.image_canvas.canvasy(evt.y)
+        self.image_canvas.create_oval(x - 5, y - 5, x + 5, y + 5)
 
     def on_resize_window(self, event):
         if self.first_window_resize_counter > 10:
@@ -139,28 +144,30 @@ class MyFirstGUI:
                     self.master.winfo_height() - 17)
                 self.image_canvas.config(width=img_canvas_width,
                                          height=img_canvas_height)
-                print(self.width, self.height)  # todo - remove
         else:
             self.first_window_resize_counter += 1
         self.width = self.master.winfo_width()
         self.height = self.master.winfo_height()
 
-    def open_image(self):
+    def open_image(self, file_path=None):
         global visual_bounding_boxes_list
-        file_path = filedialog.askopenfilename(
-            filetypes=[
-                ('Image files',  '.jpg .jpeg .png .bmp .gif .ppm .tiff')],
-            title='Open image')
+        if file_path is None:
+            file_path = filedialog.askopenfilename(
+                filetypes=[
+                    ('Image files',  '.jpg .jpeg .png .bmp .gif .ppm .tiff')],
+                title='Open image')
 
         if len(file_path) > 0:
             self.image_path = file_path
-            print('image_path: ', self.image_path)  # todo - remove
-            self.im = Image.open(self.image_path)
-            width, height = self.im.size
-            self.image_canvas.config(scrollregion=(0, 0, width, height))
-            self.im2 = ImageTk.PhotoImage(self.im)
-            self.image_canvas.delete(self.imgtag)
-            self.imgtag = self.image_canvas.create_image(
+            self.image = Image.open(self.image_path)
+            # Get the image dimensions
+            self.img_width, self.img_height = self.image.size
+            self.image_canvas.config(scrollregion=(0, 0,
+                                                   self.img_width,
+                                                   self.img_height))
+            self.im2 = ImageTk.PhotoImage(self.image)
+            self.image_canvas.delete(self.img_tag)
+            self.img_tag = self.image_canvas.create_image(
                 0, 0, anchor="nw", image=self.im2)
             # Remove the previous drawn boxes
             for visual_bounding_box in visual_bounding_boxes_list:
@@ -176,23 +183,28 @@ class MyFirstGUI:
             self.inference_graph_path = file_path
 
     def load_label_map(self):
+        global all_labels_list
         file_path = filedialog.askopenfilename(
             filetypes=[('PBTXT Files', '.pbtxt')],
             title='Load label map')
         if len(file_path) > 0:
             self.label_map_path = file_path
+            all_labels_list = read_label_map(self.label_map_path)
 
     def predict(self):
+        # predictions_dict = {
+        #     'detection_boxes':   [[.1, .1, .2, .5]],
+        #     'detection_classes': [20],
+        #     'detection_scores':  [.92]
+        # }
+        # plot_predictions(predictions_dict)
         if (len(self.image_path) > 0 and
             len(self.inference_graph_path) > 0 and
                 len(self.label_map_path) > 0):
             global predictions_dict
-            img_to_predict_on = Image.open(self.image_path)
-            predictions_dict = get_predictions_from_image(
-                self.inference_graph_path,
-                self.label_map_path,
-                img_to_predict_on)
-            plot_predictions(predictions_dict)
+            prediction_thread = Thread(target=predict_thread,
+                                       args=(predictions_dict, ))
+            prediction_thread.start()
 
     def image_canvas_entered(self, event):
         self.image_canvas_focused = True
@@ -202,11 +214,16 @@ class MyFirstGUI:
 
     def mouse_motion(self, event):
         global drawing_box_x2, drawing_box_y2
-        drawing_box_x2, drawing_box_y2 = event.x, event.y
-        print('x:{}, y:{}'.format(drawing_box_x2, drawing_box_y2))
+        x, y = (int(self.image_canvas.canvasx(event.x)),
+                int(self.image_canvas.canvasy(event.y)))
+        print('x:{}, y:{}'.format(x, y))
 
         global mouse_btn1_down
         if mouse_btn1_down:
+            drawing_box_x2, drawing_box_y2 = \
+                max(0, min(x, self.img_width)), \
+                max(0, min(y, self.img_height))
+
             print('x1: {}, y1: {}, x2: {}, y2: {}'.format(
                 drawing_box_x1, drawing_box_y1,
                 drawing_box_x2, drawing_box_y2))
@@ -222,13 +239,16 @@ class MyFirstGUI:
                     del drawing_box_tmp[-1]
             drawing_box_tmp = create_rectangle(
                 drawing_box_x1, drawing_box_y1,
-                drawing_box_x2, drawing_box_y2, fill='red', alpha=.8)
+                drawing_box_x2, drawing_box_y2,
+                fill='red', alpha=.8)
 
     def click_mouse_btn1(self, event):
         global drawing_box_x1, drawing_box_y1, mouse_btn1_down
         mouse_btn1_down = True
 
-        drawing_box_x1, drawing_box_y1 = event.x, event.y
+        drawing_box_x1, drawing_box_y1 = \
+            int(self.image_canvas.canvasx(event.x)), \
+            int(self.image_canvas.canvasy(event.y))
         print('x:{}, y:{}'.format(drawing_box_x1, drawing_box_y1))
 
     def click_mouse_btn3(self, event):
@@ -247,8 +267,8 @@ class MyFirstGUI:
             visual_bounding_boxes_list, drawing_box_tmp
         mouse_btn1_down = False
         try:
-            drawing_box_tmp
-        except NameError:
+            len(drawing_box_tmp)
+        except:
             pass
         else:
             bounding_boxes_coords_list.append(
@@ -283,26 +303,87 @@ class MyFirstGUI:
 
 
 def create_rectangle(x1, y1, x2, y2, **kwargs):
-    global alpha, fill, image, img, my_gui
+    global my_gui
     return_list = []
-    alpha = 1.0
+    alpha = 1
     if 'alpha' in kwargs:
         alpha = int(kwargs.pop('alpha') * 255)
     fill = kwargs.pop('fill')
     fill = root.winfo_rgb(fill) + (alpha,)
-    image = Image.new('RGBA', (abs(x2 - x1), abs(y2 - y1)), fill)
-    img = ImageTk.PhotoImage(image)
+    _image_ = Image.new('RGBA', (abs(x2 - x1), abs(y2 - y1)), fill)
+    _img_ = ImageTk.PhotoImage(_image_)
     # my_gui.image_canvas.create_image(min(x1, x2), min(y1, y2), image=img)
     return_list.append(my_gui.image_canvas.create_image(
-        min(x1, x2), min(y1, y2), anchor='nw', image=img))
+        min(x1, x2), min(y1, y2), anchor='nw', image=_img_))
     return_list.append(my_gui.image_canvas.create_rectangle(
         x1, y1, x2, y2, **kwargs))
-    return_list.append(img)
+    return_list.append(_img_)
     return return_list
 
 
-def plot_predictions(predictions_dict: dict):  # todo - to be done
-    ...
+def predict_thread(predictions_dict: dict, min_score_thresh=.5):
+    img_to_predict_on = Image.open(my_gui.image_path)
+    predictions_dict = get_predictions_from_image(
+        frozen_inference_graph_path=my_gui.inference_graph_path,
+        label_map_path=my_gui.label_map_path,
+        img_to_predict_on=img_to_predict_on)
+    plot_predictions(predictions_dict=predictions_dict, min_score_thresh=.5)
+
+
+def plot_predictions(predictions_dict: dict, min_score_thresh=.5):
+    global bounding_boxes_coords_list, visual_bounding_boxes_list, \
+        detection_classes_list, detection_scores_list, all_labels_list, my_gui
+    # Remove the previous drawn boxes
+    for visual_bounding_box in visual_bounding_boxes_list:
+        for item in visual_bounding_box:
+            my_gui.image_canvas.delete(item)
+    visual_bounding_boxes_list = []
+    # Copy the contents of the dictionary
+    bounding_boxes_coords_list = list(
+        predictions_dict['detection_boxes'].copy())
+    detection_classes_list = list(
+        predictions_dict['detection_classes'].copy())
+    detection_scores_list = list(
+        predictions_dict['detection_scores'].copy())
+    # Drawing each predicted box with score > min_score_thresh
+    for iterator, (bnd_box, class_, score) in \
+        enumerate(
+            zip(bounding_boxes_coords_list,
+                detection_classes_list,
+                detection_scores_list)):
+        if score > min_score_thresh:
+            bnd_box[0] = int(bnd_box[0] * my_gui.img_height)
+            bnd_box[1] = int(bnd_box[1] * my_gui.img_width)
+            bnd_box[2] = int(bnd_box[2] * my_gui.img_height)
+            bnd_box[3] = int(bnd_box[3] * my_gui.img_width)
+            drawing_box_tmp = create_rectangle(
+                bnd_box[1], bnd_box[0],
+                bnd_box[3], bnd_box[2],
+                fill='red', alpha=.8)
+            drawing_box_tmp.append(CreateToolTip(
+                widget=my_gui.image_canvas,
+                item_id=drawing_box_tmp[0],
+                bnd_box_coords=bnd_box,
+                text=all_labels_list[class_ - 1]
+            ))
+            visual_bounding_boxes_list.append(drawing_box_tmp)
+
+
+def read_label_map(label_map_path: str):
+    prefix = 'display_name: '
+
+    with open(label_map_path) as file:
+        lines = [line.strip() for line in file]  # Sroring each line in a list
+    items = [list(itertools.islice(lines[i:i+5], 5))  # Each item in a list
+             for i in range(0, len(lines), 5)]
+    # Each line with 'display_name'
+    classes = [item[3] for item in items]
+    classes = [_class[len(prefix):] for _class in classes if _class.startswith(
+        prefix)]  # Each class name with quotes
+    # Each class name in a list
+    classes = [_class.strip('\"') for _class in classes]
+
+    return classes  # Return a list with the classes names
 
 
 root = tk.Tk()

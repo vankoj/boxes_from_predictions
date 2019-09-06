@@ -31,6 +31,7 @@ class ToolTip(object):
                            background="#ffffe0", relief=SOLID, borderwidth=1,
                            font=("tahoma", "8", "normal"))
         self.label.pack(ipadx=1)
+        print('toast: ', text)  # todo - remove
 
     def hidetip(self):
         tw = self.tipwindow
@@ -50,5 +51,4 @@ def CreateToolTip(widget, item_id, bnd_box_coords, text):
     widget.tag_bind(item_id, '<Enter>', enter)
     widget.tag_bind(item_id, '<Leave>', leave)
 
-    print('label: ', toolTip.label)
     return toolTip
