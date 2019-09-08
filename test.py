@@ -12,6 +12,7 @@ from threading import Thread
 # Custom scripts:
 from get_bounding_boxes_from_prediction import get_predictions_from_image
 from ToolTip import ToolTip, CreateToolTip
+from input_box_test import InputBox, CreateInputBox  # todo - change
 
 
 CUR_DIR_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -22,7 +23,6 @@ SCREEN_HEIGHT = GetSystemMetrics(1)
 bounding_boxes_coords_list = []
 visual_bounding_boxes_list = []
 all_labels_list = []
-predictions_dict = {}
 mouse_btn1_down = False
 drawing_box_x1, drawing_box_y1, drawing_box_x2, drawing_box_y2 = (None, None,
                                                                   None, None)
@@ -41,6 +41,11 @@ class MyFirstGUI:
             '', ''
         self.image, self.img_width, self.img_height = None, None, None
         self.img_tag = None
+        self.predicting = False
+        self.predictions_dict = {}
+        self.prediction_thread = Thread(
+            target=predict_thread,
+            args=(self.predictions_dict, ))
 
         master.title('Testing the UI')
 
@@ -198,13 +203,15 @@ class MyFirstGUI:
         #     'detection_scores':  [.92]
         # }
         # plot_predictions(predictions_dict)
-        if (len(self.image_path) > 0 and
+
+        if ((not self.prediction_thread.isAlive()) and
+                len(self.image_path) > 0 and
             len(self.inference_graph_path) > 0 and
                 len(self.label_map_path) > 0):
-            global predictions_dict
-            prediction_thread = Thread(target=predict_thread,
-                                       args=(predictions_dict, ))
-            prediction_thread.start()
+            self.predicting = True
+            self.prediction_thread.start()
+        else:
+            self.predicting = False
 
     def image_canvas_entered(self, event):
         self.image_canvas_focused = True
@@ -252,6 +259,11 @@ class MyFirstGUI:
         print('x:{}, y:{}'.format(drawing_box_x1, drawing_box_y1))
 
     def click_mouse_btn3(self, event):
+        # todo - testing
+        input_box_tmp = CreateInputBox(
+            self.image_canvas, [100, 100, 300, 300], all_labels_list, input_box_return)
+        # todo - end of testing
+
         global visual_bounding_boxes_list
         if len(visual_bounding_boxes_list) > 0:
             for item_to_remove in visual_bounding_boxes_list[0][:-1]:
@@ -276,8 +288,11 @@ class MyFirstGUI:
                  drawing_box_x2, drawing_box_y2])
             visual_bounding_boxes_list.append(drawing_box_tmp)
             drawing_box_tmp.append(CreateToolTip(
-                self.image_canvas, drawing_box_tmp[0],
-                bounding_boxes_coords_list[-1], text='todo - label name ' +
+                master=self.master,
+                widget=self.image_canvas,
+                item_id=drawing_box_tmp[0],
+                bnd_box_coords=bounding_boxes_coords_list[-1],
+                text='todo - label name ' +
                 str(drawing_box_tmp[0])))
             # todo - to be done
             del drawing_box_tmp
@@ -361,6 +376,7 @@ def plot_predictions(predictions_dict: dict, min_score_thresh=.5):
                 bnd_box[3], bnd_box[2],
                 fill='red', alpha=.8)
             drawing_box_tmp.append(CreateToolTip(
+                master=root,
                 widget=my_gui.image_canvas,
                 item_id=drawing_box_tmp[0],
                 bnd_box_coords=bnd_box,
@@ -384,6 +400,10 @@ def read_label_map(label_map_path: str):
     classes = [_class.strip('\"') for _class in classes]
 
     return classes  # Return a list with the classes names
+
+
+def input_box_return(text):  # todo - remove
+    print('input_string: ', text)
 
 
 root = tk.Tk()
