@@ -1,3 +1,1 @@
-@echo off
-venv\Scripts\activate
-@echo on
+.venv\Scripts\activate

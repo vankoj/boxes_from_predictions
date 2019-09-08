@@ -15,7 +15,7 @@
 
 # %%
 
-from utils import visualization_utils as vis_util
+# from utils import visualization_utils as vis_util
 from utils import label_map_util
 from object_detection.utils import ops as utils_ops
 import numpy as np
@@ -130,13 +130,13 @@ def get_predictions_from_image(frozen_inference_graph_path: str,
 
     # %%
 
-    PATH_TO_OUTPUT_IMAGES_DIR = os.path.join(CUR_DIR_PATH, 'output_images')
+    # PATH_TO_OUTPUT_IMAGES_DIR = os.path.join(CUR_DIR_PATH, 'output_images')
 
-    if not os.path.exists(PATH_TO_OUTPUT_IMAGES_DIR):
-        os.makedirs(PATH_TO_OUTPUT_IMAGES_DIR)
+    # if not os.path.exists(PATH_TO_OUTPUT_IMAGES_DIR):
+    #     os.makedirs(PATH_TO_OUTPUT_IMAGES_DIR)
 
-    # Size, in inches, of the output images.
-    IMAGE_SIZE = (60, 40)
+    # # Size, in inches, of the output images.
+    # IMAGE_SIZE = (60, 40)
 
     # %%
 

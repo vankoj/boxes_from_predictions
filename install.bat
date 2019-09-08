@@ -1,1 +1,1 @@
-virtualenv venv && .\venv\Scripts\python -m pip install -r requirements.txt
+virtualenv venv && .\venv\Scripts\python -m pip install cython && .\venv\Scripts\python -m pip install numpy && .\venv\Scripts\python -m pip install -r requirements.txt
