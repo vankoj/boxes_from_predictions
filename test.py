@@ -24,9 +24,9 @@ bounding_boxes_coords_list = []
 visual_bounding_boxes_list = []
 all_labels_list = []
 mouse_btn1_down = False
-drawing_box_x1, drawing_box_y1, drawing_box_x2, drawing_box_y2 = (None, None,
-                                                                  None, None)
+drawing_box_x1 = drawing_box_y1 = drawing_box_x2 = drawing_box_y2 = None
 drawing_box_tmp = None
+mouse_scr_x, mouse_scr_y = 0, 0
 
 
 class MyFirstGUI:
@@ -37,15 +37,15 @@ class MyFirstGUI:
         self.first_window_resize_counter = 0
         self.shift_down = False
         self.image_canvas_focused = False
-        self.image_path, self.inference_graph_path, self.label_map_path = '', \
-            '', ''
-        self.image, self.img_width, self.img_height = None, None, None
+        self.image_path = self.inference_graph_path = self.label_map_path = ''
+        self.image = self.img_width = self.img_height = None
         self.img_tag = None
         self.predicting = False
         self.predictions_dict = {}
-        self.prediction_thread = Thread(
-            target=predict_thread,
-            args=(self.predictions_dict, ))
+        self.prediction_thread = None
+        self.moving_bnd_box = None
+        self.mouse_btn1_down_x = self.mouse_btn1_down_y = 0
+        self.mouse_motion_x = self.mouse_motion_y = 0
 
         master.title('Testing the UI')
 
@@ -204,14 +204,16 @@ class MyFirstGUI:
         # }
         # plot_predictions(predictions_dict)
 
-        if ((not self.prediction_thread.isAlive()) and
+        if ((self.prediction_thread is None or
+             not self.prediction_thread.isAlive()) and
                 len(self.image_path) > 0 and
             len(self.inference_graph_path) > 0 and
                 len(self.label_map_path) > 0):
             self.predicting = True
+            self.prediction_thread = Thread(
+                target=predict_thread,
+                args=(self.predictions_dict, ))
             self.prediction_thread.start()
-        else:
-            self.predicting = False
 
     def image_canvas_entered(self, event):
         self.image_canvas_focused = True
@@ -220,21 +222,59 @@ class MyFirstGUI:
         self.image_canvas_focused = False
 
     def mouse_motion(self, event):
-        global drawing_box_x2, drawing_box_y2
+        global drawing_box_tmp, drawing_box_x1, drawing_box_y1, \
+            drawing_box_x2, drawing_box_y2, mouse_btn1_down, \
+            mouse_scr_x, mouse_scr_y
+        if (self.prediction_thread is None or
+                not self.prediction_thread.isAlive()):
+            self.predicting = False
         x, y = (int(self.image_canvas.canvasx(event.x)),
                 int(self.image_canvas.canvasy(event.y)))
         print('x:{}, y:{}'.format(x, y))
+        self.mouse_motion_x, self.mouse_motion_y = x, y
 
-        global mouse_btn1_down
-        if mouse_btn1_down:
-            drawing_box_x2, drawing_box_y2 = \
-                max(0, min(x, self.img_width)), \
-                max(0, min(y, self.img_height))
+        mouse_scr_x, mouse_scr_y = \
+            self.master.winfo_pointerx(), self.master.winfo_pointery()
 
+        drawing_box_x2, drawing_box_y2 = \
+            max(0, min(x, self.img_width)), \
+            max(0, min(y, self.img_height))
+        if mouse_btn1_down and not self.predicting:
+            if self.moving_bnd_box:  # If the bounding box is being moved
+                # bounding_boxes_coords_list.index(self.moving_bnd_box) # todo - box movement
+                try:
+                    # Get the index of the moving bounding box
+                    # (if it is possible)
+                    idx_of_sel_box = \
+                        bounding_boxes_coords_list.index(self.moving_bnd_box)
+                except:
+                    pass
+                else:
+                    # First remove the visual moving bounding box
+                    del bounding_boxes_coords_list[idx_of_sel_box]
+                    for item in visual_bounding_boxes_list[idx_of_sel_box]:
+                        self.image_canvas.delete(item)
+                    del visual_bounding_boxes_list[idx_of_sel_box]
+                # Then calculate and set the new coordinates of
+                # the current bounding box
+                offset_x = self.mouse_motion_x - self.mouse_btn1_down_x
+                offset_y = self.mouse_motion_y - self.mouse_btn1_down_y
+                drawing_box_x1 = self.moving_bnd_box[0] + offset_x
+                drawing_box_y1 = self.moving_bnd_box[1] + offset_y
+                drawing_box_x2 = self.moving_bnd_box[2] + offset_x
+                drawing_box_y2 = self.moving_bnd_box[3] + offset_y
+                # Making sure the bounding box don't go outside of the image
+                drawing_box_x1, drawing_box_y1, \
+                    drawing_box_x2, drawing_box_y2 = \
+                    max(0, min(drawing_box_x1, self.img_width)), \
+                    max(0, min(drawing_box_y1, self.img_height)), \
+                    max(0, min(drawing_box_x2, self.img_width)), \
+                    max(0, min(drawing_box_y2, self.img_height))
+
+            # Drawing the visual bounding box
             print('x1: {}, y1: {}, x2: {}, y2: {}'.format(
                 drawing_box_x1, drawing_box_y1,
                 drawing_box_x2, drawing_box_y2))
-            global drawing_box_tmp
             try:
                 len(drawing_box_tmp)
             except:
@@ -253,10 +293,19 @@ class MyFirstGUI:
         global drawing_box_x1, drawing_box_y1, mouse_btn1_down
         mouse_btn1_down = True
 
-        drawing_box_x1, drawing_box_y1 = \
+        x, y = \
             int(self.image_canvas.canvasx(event.x)), \
             int(self.image_canvas.canvasy(event.y))
         print('x:{}, y:{}'.format(drawing_box_x1, drawing_box_y1))
+
+        drawing_box_x1, drawing_box_y1 = x, y
+        self.mouse_btn1_down_x, self.mouse_btn1_down_y = x, y
+
+        self.moving_bnd_box = None
+        for bnd_box in reversed(bounding_boxes_coords_list):
+            if (point_in_rect((x, y), bnd_box.copy())):
+                self.moving_bnd_box = bnd_box
+                break
 
     def click_mouse_btn3(self, event):
         # todo - testing
@@ -264,15 +313,15 @@ class MyFirstGUI:
             self.image_canvas, [100, 100, 300, 300], all_labels_list, input_box_return)
         # todo - end of testing
 
-        global visual_bounding_boxes_list
-        if len(visual_bounding_boxes_list) > 0:
-            for item_to_remove in visual_bounding_boxes_list[0][:-1]:
-                self.image_canvas.delete(item_to_remove)
-            item_to_remove = visual_bounding_boxes_list[0][-1].tipwindow
-            if item_to_remove is not None:
-                item_to_remove.destroy()
-            del visual_bounding_boxes_list[0]
-        print('right')
+        # global visual_bounding_boxes_list
+        # if len(visual_bounding_boxes_list) > 0:
+        #     for item_to_remove in visual_bounding_boxes_list[0][:-1]:
+        #         self.image_canvas.delete(item_to_remove)
+        #     item_to_remove = visual_bounding_boxes_list[0][-1].tipwindow
+        #     if item_to_remove is not None:
+        #         item_to_remove.destroy()
+        #     del visual_bounding_boxes_list[0]
+        # print('right')
 
     def release_mouse_btn1(self, event):
         global mouse_btn1_down, bounding_boxes_coords_list, \
@@ -337,11 +386,17 @@ def create_rectangle(x1, y1, x2, y2, **kwargs):
 
 
 def predict_thread(predictions_dict: dict, min_score_thresh=.5):
+    # Delete the items in the listbox in the side panel
+    for i in range(1, my_gui.listbox.size() + 1):
+        my_gui.listbox.delete(i)
     img_to_predict_on = Image.open(my_gui.image_path)
     predictions_dict = get_predictions_from_image(
         frozen_inference_graph_path=my_gui.inference_graph_path,
         label_map_path=my_gui.label_map_path,
         img_to_predict_on=img_to_predict_on)
+    # for idx in range(len(predictions_dict['detection_boxes'])):
+    #     str = predictions_dict['detection_boxes'][idx]
+
     plot_predictions(predictions_dict=predictions_dict, min_score_thresh=.5)
 
 
@@ -400,6 +455,23 @@ def read_label_map(label_map_path: str):
     classes = [_class.strip('\"') for _class in classes]
 
     return classes  # Return a list with the classes names
+
+
+def point_in_rect(point: tuple, bnd_box: list):
+    res = False
+    x, y = point
+    # Sorting the coordinates of the current bounding box:
+    # sorted_bnd_box: [x, y, X, Y]
+    sorted_bnd_box = [min(bnd_box[0], bnd_box[2]),
+                      min(bnd_box[1], bnd_box[3]),
+                      max(bnd_box[0], bnd_box[2]),
+                      max(bnd_box[1], bnd_box[3])]
+    if (x >= sorted_bnd_box[0] and
+        x <= sorted_bnd_box[2] and
+            y >= sorted_bnd_box[1] and
+            y <= sorted_bnd_box[3]):
+        res = True
+    return res
 
 
 def input_box_return(text):  # todo - remove
